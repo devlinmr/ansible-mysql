@@ -1,0 +1,19 @@
+###
+### {{ ansible_managed }}
+###
+
+[client]
+user=root
+password={{ mysql_security_root_pass | default('') }}
+
+[mysql]
+user=root
+password={{ mysql_security_root_pass | default('') }}
+
+[mysqldump]
+user=root
+password={{ mysql_security_root_pass | default('') }}
+
+[mysqldiff]
+user=root
+password={{ mysql_security_root_pass | default('') }}

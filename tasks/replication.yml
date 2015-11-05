@@ -1,0 +1,142 @@
+---
+
+###################################################################################################
+
+- name: replication | add replication user
+
+  mysql_user: check_implicit_admin=true
+              name={{ mysql_repl_user }}
+          password={{ mysql_repl_pwd }}
+              priv="*.*:REPLICATION SLAVE"
+              host="%"
+
+  tags: 
+    - mysql
+    - database
+    - replication
+
+### master-slave replication ######################################################################
+
+- name: replication | get master replication status
+
+  mysql_replication: mode=getmaster
+
+  delegate_to: "{{ mysql_master_hostname }}"
+
+  register: master_repl_status
+
+  when: mysql_slave
+
+  tags: 
+    - mysql
+    - database
+    - replication
+
+###################################################################################################  
+
+- name : replication | template replication config sql file
+
+  template : src=sql/configure_master.sql.j2
+            dest={{ mysql_base_dir }}/configure_master.sql
+           owner={{ mysql_security_runtime_user }}
+           group={{ mysql_security_runtime_group }}
+           mode=0640
+
+  when: mysql_slave
+        and master_repl_status is defined
+
+  tags: 
+    - mysql
+    - database
+    - replication
+
+- name : replication | configure slave and start replication
+
+  shell : "mysql < {{ mysql_base_dir }}/configure_master.sql && echo \"{{ master_repl_status.File }} {{ master_repl_status.Position }}\" > {{ mysql_base_dir }}/replication_status.txt"
+
+  args:
+    creates: "{{ mysql_base_dir }}/replication_status.txt"
+
+  when: mysql_slave
+        and master_repl_status is defined
+
+  tags: 
+    - mysql
+    - database
+    - replication
+
+  register: new_slave
+
+### slave-master replication ######################################################################
+
+- name: replication | get slave master replication status
+
+  mysql_replication: mode=getmaster
+
+  delegate_to: "{{ mysql_slave_hostname }}"
+
+  register: slave_repl_status
+
+  when: mysql_slave
+        and mysql_master_to_master
+        and mysql_master_host != mysql_slave_host
+
+  tags: 
+    - mysql
+    - database
+    - replication
+
+###################################################################################################  
+
+- name: replication | template replication config sql file
+
+  template: src=sql/configure_master.sql.j2
+            dest={{ mysql_base_dir }}/configure_master.sql
+           owner={{ mysql_security_runtime_user }}
+           group={{ mysql_security_runtime_group }}
+           mode=0640
+
+  delegate_to: "{{ mysql_master_hostname }}"
+
+  when: mysql_slave
+        and slave_repl_status is defined
+        and mysql_master_to_master
+        and mysql_master_host != mysql_slave_host
+
+  tags: 
+    - mysql
+    - database
+    - replication
+
+- name: replication | configure master and start replication
+
+  shell: "mysql < {{ mysql_base_dir }}/configure_master.sql"
+
+  delegate_to: "{{ mysql_master_hostname }}"
+
+  register: restart_slave
+
+  when: mysql_slave
+        and slave_repl_status is defined
+        and mysql_master_to_master
+        and mysql_master_host != mysql_slave_host
+
+  tags: 
+    - mysql
+    - database
+    - replication
+
+- name: replication | restart slave
+
+  service: name={{ mysql_service }}
+          state={% if mysql_enabled %}restarted{% endif %}
+
+  when: mysql_slave
+        and restart_slave.changed
+
+  tags: 
+    - mysql
+    - database
+    - replication
+
+###################################################################################################

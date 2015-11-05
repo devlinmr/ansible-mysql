@@ -1,0 +1,84 @@
+#!/bin/bash
+
+###
+### {{ ansible_managed }}
+###
+
+#
+# backup_mysql.sh
+#
+# this script is run via cron and will backup mysql each night
+#
+# version 1.0 17/07/2013 JW New Script
+# version 1.1 22/07/2013 MB Setup logging to syslog and changed retention period
+# version 1.2 30/07/2013 MB changed error logging message
+# version 1.3 24/09/2013 JW move housekeep to start to ensure we have enough space
+# version 1.4 24/10/2013 EJ Added compression, increased days kept to 14
+# version 1.5 05/11/2013 EJ Took the days to keep backups back down to 7
+# version 1.6 14/11/2013 EJ Took the days to keep backups back down to 3
+# version 1.7 26/08/2014 RB Add long running process check and improve logging
+# version 1.8 14/11/2014 MD Template for Ansible
+
+BACKUP_TIME=`date +%Y%m%d_%H%M%S`
+Backup_Folder={{ mysql_backup_dir }}/${BACKUP_TIME}
+Backup_Log={{ mysql_backup_logs_dir }}/${BACKUP_TIME}.log
+Compressed_File=${BACKUP_TIME}.tar.gz
+if [ ! -d {{ mysql_backup_logs_dir }} ]
+then
+        mkdir {{ mysql_backup_logs_dir }}
+fi
+
+# This is to crop backup data at 14 days
+find {{ mysql_backup_logs_dir }} -mtime +{{ mysql_backup_retain_days }} -exec rm {} \;  >/dev/null 2>&1
+# This tidys any previous backups directories with a 2 at the front (so as not to delete log file)
+# that is older than 2 days
+find {{ mysql_backup_dir }} -mtime +1 -name "2*" -type d -exec rm -rf {} \;  >/dev/null 2>&1
+
+# Check that there are no long running database processes
+
+declare -i numloops=6
+declare -i waitsecs=300
+
+for ((x=1; x <= $numloops; x += 1))
+do
+  res=`mysql -u {{ mysql_backup_user }} -p{{ mysql_backup_pwd }} -e "SELECT COUNT(*) FROM information_schema.PROCESSLIST WHERE COMMAND NOT IN ('Sleep','Binlog Dump','Daemon') AND USER != 'system user' AND TIME > 60"| grep 0`
+  if test "$res" = "0"
+  then break;
+  fi
+  sleep $waitsecs
+done
+
+if test $x -ge $numloops
+then
+  echo database backup not run due to long running process at `date` >> $Backup_Log
+  exit 1
+fi
+
+echo backup started at `date` >> $Backup_Log
+innobackupex -user {{ mysql_backup_user }} -password {{ mysql_backup_pwd }} --no-timestamp $Backup_Folder >> $Backup_Log 2>&1
+Return=$?
+if [ "$Return" != "0" ]
+then
+        echo ERROR: the backup has failed with an exit status of $Return >> $Backup_Log
+        logger ERROR: the tp backup_mysql has failed its first run with an exit status of $Return
+        exit 1
+else
+        echo backup complete at `date`, see the log file  $Backup_Log for more information
+        logger INFO: the tp backup_mysql has passed first run
+fi
+
+echo starting to apply the bin logs at `date`
+innobackupex -user {{ mysql_backup_user }} -password {{ mysql_backup_pwd }} --apply-log $Backup_Folder >>$Backup_Log 2>&1
+Return=$?
+if [ "$Return" != "0" ]
+then
+        echo ERROR: the backup has failed with an exit status of $Return >> $Backup_Log
+        logger ERROR: the tp backup_mysql has failed its second run with an exit status of $Return, see {{ mysql_backup_logs_dir }} for details
+        exit 1
+else
+        echo binlog sync complete at `date`,  see the log file  $Backup_Log for more information
+        logger INFO: the tp backup_mysql has passed second run
+fi
+echo backup completed at `date` >> $Backup_Log
+
+tar -zcvf $Backup_Folder/$Compressed_File  $Backup_Folder/* --remove-files

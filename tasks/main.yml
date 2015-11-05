@@ -1,0 +1,202 @@
+---
+
+###################################################################################################
+
+- name: platform | configure
+  include_vars: "{{ ansible_os_family }}"
+
+  tags: 
+    - mysql
+
+###################################################################################################
+
+- name: configure
+
+  when: mysql_enabled == true
+
+  template: src=etc/my.cnf.j2
+
+           dest={{ mysql_data_conf_dir          }}/my.cnf
+          owner={{ mysql_security_runtime_user  }}
+          group={{ mysql_security_runtime_group }}
+           mode=0640
+
+  notify: mysql | restart
+
+  tags: 
+    - mysql
+
+###################################################################################################
+
+- name: tmpdir security
+
+  file: path={{ mysql_data_tmp_dir }}
+       owner={{ mysql_security_runtime_user }}
+       group={{ mysql_security_runtime_group }}
+        mode=0750
+       state=directory
+
+  tags: 
+    - mysql
+
+###################################################################################################
+
+- name: logrotate.d
+
+  when: mysql_enabled == true
+
+  template: src=etc/logrotate.d/mysql.j2
+
+           dest=/etc/logrotate.d/mysql
+          owner=root
+          group=root
+           mode=0640
+
+  tags: 
+    - mysql
+
+###################################################################################################
+
+- name: init.d
+
+  when: mysql_enabled == true
+
+  template: src=etc/init.d/mysql.j2
+
+           dest=/etc/init.d/mysql
+          owner=root
+          group={{ mysql_security_runtime_group }}
+           mode=0750
+
+  tags: 
+    - mysql
+
+###################################################################################################
+
+- name: configure | database
+
+  when: mysql_enabled == true
+
+  command: "{{ mysql_installer }} --user {{ mysql_security_runtime_user }} --datadir {{ mysql_data_dir }} creates={{ mysql_data_dir }}/mysql"
+
+  tags: 
+    - mysql
+
+###################################################################################################
+
+- name: start
+
+  service: name={{ mysql_service }}
+          state=started
+
+  tags: 
+    - mysql
+
+###################################################################################################
+
+- name: enable/disable
+
+  service: name={{ mysql_service }}
+        enabled={{ mysql_enabled }}
+
+  tags: 
+    - mysql
+
+###################################################################################################
+
+- name: update mysql root password for all root accounts
+
+  when: mysql_enabled == true
+
+  mysql_user: name=root
+              check_implicit_admin=true
+              host={{ item }}
+          password={{ mysql_security_root_pass }}
+        login_user=root
+    login_password={{ mysql_security_root_pass }}
+
+  with_flattened: 
+    - ansible_all_ipv4_addresses
+    - "{{ ansible_hostname }}"
+    - 127.0.0.1
+    - ::1
+    - localhost
+
+  tags: 
+    - mysql
+
+###################################################################################################
+
+- name: root my.cnf file
+
+  sudo: true 
+
+  template: src=root_my.cnf.j2
+           dest=/root/.my.cnf
+          owner=root
+          group=root
+           mode=0640
+
+  tags: 
+    - mysql
+
+###################################################################################################
+
+- name: add backup user
+
+  mysql_user: check_implicit_admin=true
+              name={{ mysql_backup_user }}
+          password={{ mysql_backup_pwd }}
+              priv="*.*:SELECT,RELOAD,PROCESS,FILE,SUPER,LOCK TABLES,SHOW VIEW"
+              host=localhost
+
+  tags: 
+    - mysql
+
+###################################################################################################
+
+- name: tmpdir security
+
+  file: path={{ mysql_data_tmp_dir }}
+       owner={{ mysql_security_runtime_user }}
+       group={{ mysql_security_runtime_group }}
+        mode=0750
+       state=directory
+
+  tags: 
+    - mysql
+
+###################################################################################################
+
+- name: backup directory security
+
+  file: path={{ mysql_backup_dir }}
+       owner={{ mysql_security_runtime_user }}
+       group={{ mysql_security_runtime_group }}
+        mode=0750
+       state=directory
+
+  tags: 
+    - mysql
+
+
+###################################################################################################
+
+- include: replication.yml
+  
+  when: mysql_is_clustered
+
+  tags: 
+    - mysql
+    - database
+    - replication
+
+- include: databases.yml 
+
+  tags:
+    - mysql
+    - database
+
+  when: not mysql_slave
+
+###################################################################################################

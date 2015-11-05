@@ -1,0 +1,7 @@
+COMMIT;
+SET unique_checks=1;
+SET foreign_key_checks=1;
+{% if mysql_is_clustered %}
+SET sql_log_bin=1;
+{% endif %}
+SET autocommit=1;

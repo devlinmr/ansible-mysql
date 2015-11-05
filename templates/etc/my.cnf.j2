@@ -1,0 +1,52 @@
+###
+### {{ ansible_managed }}
+###
+[mysqld]
+datadir={{ mysql_data_dir }}
+socket={{ mysql_data_run_dir }}/mysql.sock
+user={{ mysql_security_runtime_user }}
+character_set_server={{ mysql_misc_character_set }}
+innodb_log_file_size={{ mysql_data_log_file_size }}
+innodb_buffer_pool_size={{ mysql_data_buffer_pool_size }}
+innodb_flush_log_at_trx_commit={{ mysql_flush_log_at_trx_commit }}
+innodb_file_per_table
+#innodb_io_capacity=2000
+
+bind-address={{ mysql_bind_address }}
+port={{ mysql_network_port  }}
+report-port={{ mysql_network_reporting_port }}
+
+query_cache_size=0
+query_cache_type=0
+server-id={{ mysql_misc_id }}
+
+{% if mysql_is_clustered == true %}
+# Binary logging enabled
+log-bin={{ host.name }}-bin.log
+expire_logs_days={{ mysql_expire_logs_days }}
+binlog-format={{ mysql_binlog_format }}
+log-slave-updates={{ mysql_log_slave_updates }}
+{% else %}
+# Binary logging disabled
+{% endif %}
+
+report-host={{ host.name }}
+pid-file={{ mysql_data_run_dir }}/mysqld.pid
+event_scheduler=on
+
+# Disabling symbolic-links is recommended to prevent assorted security risks
+symbolic-links=0
+
+max_connections=3200
+max_allowed_packet=16777216
+tmpdir={{ mysql_data_tmp_dir }}
+thread_cache_size=100
+innodb_open_files=1000
+table_open_cache=1000
+table_definition_cache=1000
+
+log-error={{ mysql_data_error_log }}
+[mysqld_safe]
+log-error={{ mysql_data_error_log }}
+pid-file={{ mysql_data_run_dir }}/mysqld.pid
+datadir={{ mysql_data_dir }}

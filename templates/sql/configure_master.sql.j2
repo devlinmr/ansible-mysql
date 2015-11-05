@@ -1,0 +1,13 @@
+###
+### {{ ansible_managed }}
+###
+
+STOP SLAVE;
+{% if slave_repl_status is defined %}
+# Master
+CHANGE MASTER TO MASTER_HOST='{{ mysql_slave_host }}', MASTER_USER='{{ mysql_repl_user }}', MASTER_PASSWORD='{{ mysql_repl_pwd }}', MASTER_LOG_FILE='{{ slave_repl_status.File }}', MASTER_LOG_POS={{ slave_repl_status.Position }};
+{% else %}
+# Slave
+CHANGE MASTER TO MASTER_HOST='{{ mysql_master_host }}', MASTER_USER='{{ mysql_repl_user }}', MASTER_PASSWORD='{{ mysql_repl_pwd }}', MASTER_LOG_FILE='{{ master_repl_status.File }}', MASTER_LOG_POS={{ master_repl_status.Position }};
+{% endif %}
+START SLAVE;

@@ -1,0 +1,176 @@
+---
+
+###################################################################################################
+
+- name : databases | create database
+
+  mysql_db : name={{ item.name }}
+
+           state=present
+        encoding={{ item.encoding | default('utf8') }}
+       collation={{ item.collation | default('utf8_general_ci') }}
+       login_user=root
+       login_password={{ mysql_security_root_pass | default('') }}
+
+  with_flattened:
+    - mysql_data_databases
+
+  tags: 
+    - mysql
+    - database_create
+
+- name : database | grant user privileges
+
+  mysql_user : name={{ item.user }}
+         check_implicit_admin=true
+          password={{ item.password | default('') }}
+              priv={{ item.privileges | default('*.*:USAGE') }}
+              host={{ item.hosts | default('"%"') }}
+             state={{ item.state | default('present') }}
+      append_privs={{ item.append_privs | default('yes') }}
+       login_user=root
+       login_password={{ mysql_security_root_pass | default('') }}
+
+  with_flattened:
+    - mysql_security_db_user
+
+  tags:
+    - database_create
+
+### db copy #######################################################################################
+
+- name : databases | imports | copy backup file to node
+
+  synchronize : src={{ item.dumpfile }}
+       dest={{ item.dumpfile }}
+       copy_links=yes
+
+  with_flattened:
+    - mysql_data_imports
+
+  when : mysql_data_imports is defined and vagrant_node is not defined
+
+  tags:
+    - mysql
+    - database_imports
+
+- name : databases | imports | set permissions on backup file
+
+  file : path={{ item.dumpfile }}
+
+        owner={{ mysql_security_runtime_user }}
+        group={{ mysql_security_runtime_group }}
+         mode=0640
+        state=file
+
+  with_flattened:
+    - mysql_data_imports
+
+  when : mysql_data_imports is defined and vagrant_node is not defined
+
+  tags:
+    - mysql
+    - database_imports
+
+### db import prep ################################################################################
+
+- name : databases | imports | template import header
+
+  template : src=sql/import_header.txt.j2
+            dest={{ mysql_base_dir }}/import_header.txt
+           owner={{ mysql_security_runtime_user }}
+           group={{ mysql_security_runtime_group }}
+           mode=0640
+
+  when : mysql_data_imports is defined
+
+  tags:
+    - mysql
+    - database_imports
+
+- name : databases | imports | template import footer
+
+  template : src=sql/import_footer.txt.j2
+            dest={{ mysql_base_dir }}/import_footer.txt
+           owner={{ mysql_security_runtime_user }}
+           group={{ mysql_security_runtime_group }}
+           mode=0640
+
+  when : mysql_data_imports is defined
+
+  tags:
+    - mysql
+    - database_imports
+
+- name : databases | imports | gunzip import file
+
+  shell : "gunzip {{ item.dumpfile }}"
+
+  with_flattened:
+    - mysql_data_imports
+
+  when : mysql_data_imports is defined and item.dumpfile.endswith('.gz')
+
+  tags:
+    - mysql
+    - database_imports
+
+- name : databases | imports | prepend import header
+
+  shell : "sed -i -e '2{x;G};1{h;r{{ mysql_base_dir }}/import_header.txt' -e 'd}' {{ item.dumpfile.rstrip('.gz') }}"
+
+  with_flattened:
+    - mysql_data_imports
+
+  when : mysql_data_imports is defined and vagrant_node is not defined
+
+  tags:
+    - mysql
+    - database_imports
+
+- name : databases | imports | append import footer
+
+  shell : "cat {{ mysql_base_dir }}/import_footer.txt >> {{ item.dumpfile.rstrip('.gz') }}"
+
+  with_flattened:
+    - mysql_data_imports
+
+  when : mysql_data_imports is defined and vagrant_node is not defined
+
+  tags:
+    - mysql
+    - database_imports
+
+### db import #####################################################################################
+
+- name : databases | imports | import DB
+
+  mysql_db : name={{ item.name }}
+
+            state=import
+           target={{ item.dumpfile.rstrip('.gz') }}
+
+  with_flattened:
+    - mysql_data_imports
+
+  when: mysql_data_imports is defined
+
+  tags:
+    - mysql
+    - database_imports
+
+- name : databases | imports | delete import file
+
+  file : path={{ item.dumpfile.rstrip('.gz') }}
+        state=absent
+
+  with_flattened:
+    - mysql_data_imports
+
+  when : mysql_data_imports is defined and vagrant_node is not defined
+
+  tags:
+    - mysql
+    - database_imports
+
+###################################################################################################

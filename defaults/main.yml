@@ -1,0 +1,72 @@
+---
+
+###################################################################################################
+### mysql #########################################################################################
+###################################################################################################
+mysql_enabled          : true
+mysql_service          : mysql
+mysql_expire_logs_days : 5
+mysql_error_logs_days  : 5
+
+###################################################################################################
+### mysql | network ###############################################################################
+###################################################################################################
+mysql_network_port           : 3306
+mysql_network_reporting_port : 3306
+mysql_master_port            : "{{ mysql_network_port }}"
+mysql_bind_address           : 0.0.0.0
+
+###################################################################################################
+### mysql | data ##################################################################################
+###################################################################################################
+mysql_root_dir               : /data
+mysql_base_dir               : "{{ mysql_root_dir }}/mysql"
+mysql_data_dir               : "{{ mysql_base_dir }}/data"
+mysql_data_log_file_size     : 10M
+mysql_flush_log_at_trx_commit: 0
+mysql_data_buffer_pool_size  : 80M
+mysql_data_tmp_dir           : /tmp
+
+mysql_binlog_format          : ROW
+mysql_log_slave_updates      : true
+
+###################################################################################################
+### mysql | security ##############################################################################
+###################################################################################################
+mysql_security_runtime_user  : mysql
+mysql_security_runtime_group : mysql
+
+###################################################################################################
+### mysql | clustering ############################################################################
+###################################################################################################
+mysql_is_clustered     : true
+mysql_master_to_master : false
+
+mysql_master           : true
+mysql_master_host      : mysql
+mysql_master_hostname  : "{{ mysql_master_host }}"
+
+mysql_slave            : false
+mysql_slave_host       : mysql-slave
+mysql_slave_hostname   : "{{ mysql_slave_host }}"
+
+mysql_repl_user        : repl
+mysql_repl_pwd         : backup
+
+keepalived_mysql       : false
+
+###################################################################################################
+### mysql | backup ################################################################################
+###################################################################################################
+mysql_backup_dir        : "{{ mysql_root_dir }}/mysql_backups"
+mysql_backup_logs_dir   : "{{ mysql_backup_dir }}/logs"
+mysql_backup_retain_days: 3
+
+mysql_backup_user       : backup
+mysql_backup_pwd        : backup
+mysql_backup_script     : backup_mysql.sh
+
+mysql_backup_hour       : 1
+mysql_backup_minute     : 00
+
+###################################################################################################
